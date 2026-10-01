@@ -77,3 +77,11 @@ func (a *Arbiter) IsAvailable(resources []string) bool {
 	}
 	return true
 }
+
+// IsHeld reports whether a reservation made with requestID is still active.
+func (a *Arbiter) IsHeld(requestID string) bool {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	_, exists := a.requests[requestID]
+	return exists
+}

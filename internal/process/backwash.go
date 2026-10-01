@@ -52,6 +52,9 @@ func (p *Plant) StartDrain(lineID model.LineID, basinID string) (sludge.DrainOpe
 }
 
 func (p *Plant) ReleaseInterlock(requestID string) error {
+	if err := p.drains.Release(requestID, p.now()); err == nil {
+		return nil
+	}
 	return p.interlocks.Release(requestID)
 }
 

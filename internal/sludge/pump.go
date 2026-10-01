@@ -96,6 +96,29 @@ func (c *PumpController) StopOwned(pumpID string, sequenceID uuid.UUID, generati
 	return pump, nil
 }
 
+// Assignment reports the sequence and generation currently owning a pump.
+func (c *PumpController) Assignment(pumpID string) (uuid.UUID, uint64, bool) {
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+	pump, ok := c.pumps[pumpID]
+	if !ok || pump.OwnerSequence == uuid.Nil {
+		return uuid.Nil, 0, false
+	}
+	return pump.OwnerSequence, pump.OwnerGeneration, true
+}
+
+// OwnedFlow returns the confirmed flow of a pump that is still owned by the
+// given sequence. It is the gate used before closing a sludge export manifest.
+func (c *PumpController) OwnedFlow(pumpID string, sequenceID uuid.UUID) (float64, bool) {
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+	pump, ok := c.pumps[pumpID]
+	if !ok || pump.OwnerSequence != sequenceID || !pump.Running || pump.Flow <= 0 {
+		return 0, false
+	}
+	return pump.Flow, true
+}
+
 func (c *PumpController) Snapshot() []Pump {
 	c.mu.RLock()
 	defer c.mu.RUnlock()

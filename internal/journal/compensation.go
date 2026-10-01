@@ -11,23 +11,45 @@ import (
 	"github.com/wyw14/cry-97/internal/model"
 )
 
+type CompensationRef string
+
+const (
+	RefSequence CompensationRef = "sludge_sequence"
+	RefManifest CompensationRef = "sludge_manifest"
+)
+
 type Compensation struct {
-	ID         uuid.UUID    `json:"id"`
-	LineID     model.LineID `json:"line_id"`
-	SequenceID uuid.UUID    `json:"sequence_id"`
-	Generation uint64       `json:"generation"`
-	DeviceID   string       `json:"device_id"`
-	Action     string       `json:"action"`
-	DueAt      time.Time    `json:"due_at"`
+	ID         uuid.UUID       `json:"id"`
+	LineID     model.LineID    `json:"line_id"`
+	SequenceID uuid.UUID       `json:"sequence_id"`
+	Generation uint64          `json:"generation"`
+	DeviceID   string          `json:"device_id"`
+	Action     string          `json:"action"`
+	DueAt      time.Time       `json:"due_at"`
+	RefType    CompensationRef `json:"ref_type"`
+	RefID      uuid.UUID       `json:"ref_id"`
 }
 
+// NewCompensation builds a compensation linked to a sludge pump sequence.
 func NewCompensation(lineID model.LineID, sequenceID uuid.UUID, generation uint64, deviceID, action string, dueAt time.Time) (Compensation, error) {
+	return NewCompensationRef(lineID, sequenceID, generation, deviceID, action, dueAt, RefSequence, sequenceID)
+}
+
+// NewCompensationRef builds a compensation linked back to the workflow object
+// that requested it (a pump sequence or a sludge export manifest).
+func NewCompensationRef(lineID model.LineID, sequenceID uuid.UUID, generation uint64, deviceID, action string, dueAt time.Time, refType CompensationRef, refID uuid.UUID) (Compensation, error) {
 	if lineID == "" || sequenceID == uuid.Nil || generation == 0 || deviceID == "" || action == "" {
 		return Compensation{}, errors.New("compensation identity is incomplete")
 	}
+	if refType != RefSequence && refType != RefManifest {
+		return Compensation{}, errors.New("compensation reference type is unsupported")
+	}
+	if refID == uuid.Nil {
+		return Compensation{}, errors.New("compensation reference is required")
+	}
 	return Compensation{
 		ID: uuid.New(), LineID: lineID, SequenceID: sequenceID, Generation: generation,
-		DeviceID: deviceID, Action: action, DueAt: dueAt.UTC(),
+		DeviceID: deviceID, Action: action, DueAt: dueAt.UTC(), RefType: refType, RefID: refID,
 	}, nil
 }
 

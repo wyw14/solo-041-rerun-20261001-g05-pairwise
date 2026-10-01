@@ -46,6 +46,7 @@ type Plant struct {
 	pumps         *sludge.PumpController
 	handovers     *sludge.HandoverBook
 	sequences     *sludge.SequenceBook
+	manifests     *sludge.ManifestBook
 	compensations *journal.CompensationQueue
 	devices       *DeviceBus
 	sampler       *sensor.Sampler
@@ -130,6 +131,10 @@ func NewPlant(dataDir string, lines []model.LineID, now func() time.Time) (*Plan
 	if err != nil {
 		return nil, err
 	}
+	manifests, err := sludge.NewManifestBook(pumps, arbiter, queue)
+	if err != nil {
+		return nil, err
+	}
 	devices := NewDeviceBus()
 	dosingService, err := dosing.NewService(store, devices, dosing.NewLedger())
 	if err != nil {
@@ -147,7 +152,7 @@ func NewPlant(dataDir string, lines []model.LineID, now func() time.Time) (*Plan
 		labResults: lab.NewResults(), permits: permits, valves: valves, alarms: alarm.NewService(),
 		settling: make(map[model.LineID]*settling.State), cycles: settling.NewCycleBook(),
 		interlocks: arbiter, drains: drains, pumps: pumps, handovers: sludge.NewHandoverBook(),
-		sequences: sequences, compensations: queue, devices: devices, sampler: sampler, receiver: receiver,
+		sequences: sequences, manifests: manifests, compensations: queue, devices: devices, sampler: sampler, receiver: receiver,
 	}
 	for _, lineID := range lines {
 		plant.lines[lineID] = model.NewLineState(lineID, now())
