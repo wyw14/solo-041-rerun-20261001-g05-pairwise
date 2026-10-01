@@ -54,6 +54,9 @@ func (p *Plant) FailSludgeSequence(lineID model.LineID) (sludge.Sequence, error)
 func (p *Plant) RunCompensations(ctx context.Context) (int, error) {
 	now := p.now()
 	return p.compensations.ExecuteDue(ctx, now, func(callCtx context.Context, item journal.Compensation) error {
+		if item.TaskID != uuid.Nil {
+			return p.manifests.ExecuteCompensation(callCtx, item, now)
+		}
 		return p.sequences.ExecuteCompensation(callCtx, item, now)
 	})
 }

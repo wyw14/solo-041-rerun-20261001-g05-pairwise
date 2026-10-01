@@ -14,8 +14,9 @@ import (
 type Compensation struct {
 	ID         uuid.UUID    `json:"id"`
 	LineID     model.LineID `json:"line_id"`
-	SequenceID uuid.UUID    `json:"sequence_id"`
-	Generation uint64       `json:"generation"`
+	SequenceID uuid.UUID    `json:"sequence_id,omitempty"`
+	TaskID     uuid.UUID    `json:"task_id,omitempty"`
+	Generation uint64       `json:"generation,omitempty"`
 	DeviceID   string       `json:"device_id"`
 	Action     string       `json:"action"`
 	DueAt      time.Time    `json:"due_at"`
@@ -27,6 +28,17 @@ func NewCompensation(lineID model.LineID, sequenceID uuid.UUID, generation uint6
 	}
 	return Compensation{
 		ID: uuid.New(), LineID: lineID, SequenceID: sequenceID, Generation: generation,
+		DeviceID: deviceID, Action: action, DueAt: dueAt.UTC(),
+	}, nil
+}
+
+// NewTaskCompensation 为非序列任务（如外运联单）建立补偿动作。
+func NewTaskCompensation(lineID model.LineID, taskID uuid.UUID, deviceID, action string, dueAt time.Time) (Compensation, error) {
+	if lineID == "" || taskID == uuid.Nil || deviceID == "" || action == "" {
+		return Compensation{}, errors.New("task compensation identity is incomplete")
+	}
+	return Compensation{
+		ID: uuid.New(), LineID: lineID, TaskID: taskID,
 		DeviceID: deviceID, Action: action, DueAt: dueAt.UTC(),
 	}, nil
 }

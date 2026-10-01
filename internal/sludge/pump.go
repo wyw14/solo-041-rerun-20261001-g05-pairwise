@@ -96,6 +96,28 @@ func (c *PumpController) StopOwned(pumpID string, sequenceID uuid.UUID, generati
 	return pump, nil
 }
 
+// Release 供外运联单失败后的补偿清理使用，不校验属主，强制停泵。
+func (c *PumpController) Release(pumpID string, now time.Time) (Pump, error) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	pump, ok := c.pumps[pumpID]
+	if !ok {
+		return Pump{}, errors.New("return pump is not found")
+	}
+	pump.Running = false
+	pump.Flow = 0
+	pump.UpdatedAt = now.UTC()
+	c.pumps[pumpID] = pump
+	return pump, nil
+}
+
+func (c *PumpController) Exists(pumpID string) bool {
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+	_, ok := c.pumps[pumpID]
+	return ok
+}
+
 func (c *PumpController) Snapshot() []Pump {
 	c.mu.RLock()
 	defer c.mu.RUnlock()

@@ -67,6 +67,14 @@ func (a *Arbiter) Active() []Reservation {
 	return result
 }
 
+// Holds 判断某互锁预约（按请求 ID）是否仍被持有。
+func (a *Arbiter) Holds(requestID string) bool {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	_, exists := a.requests[requestID]
+	return exists
+}
+
 func (a *Arbiter) IsAvailable(resources []string) bool {
 	a.mu.Lock()
 	defer a.mu.Unlock()

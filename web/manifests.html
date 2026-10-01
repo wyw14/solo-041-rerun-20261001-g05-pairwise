@@ -1,0 +1,93 @@
+<!doctype html>
+<html lang="zh-CN">
+<head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>BioTreat 污泥外运联单</title><link rel="stylesheet" href="/assets/app.css">
+<style>
+.ticket { display: none; white-space: pre-wrap; font-family: ui-monospace, Menlo, Consolas, monospace; font-size: 13px; line-height: 1.7; background: #fff; border: 1px solid #d4dde0; border-radius: 6px; padding: 22px; margin-top: 14px; }
+.badge { display: inline-block; border-radius: 10px; padding: 2px 9px; font-size: 12px; color: #fff; }
+.badge.open { background: #b07a1f; }
+.badge.completed { background: #2b9a65; }
+.badge.failed { background: #a63e37; }
+.row-actions { display: flex; gap: 6px; flex-wrap: wrap; }
+.row-actions button, .row-actions a { padding: 6px 10px; font-size: 12px; text-decoration: none; border-radius: 4px; }
+.row-actions a { background: #46606a; color: #fff; }
+@media print {
+  header, .page-head, .grid, #output, .no-print { display: none !important; }
+  main { max-width: none; padding: 0; }
+  #ticket { display: block !important; border: 0; }
+}
+</style></head>
+<body><header><div class="brand">BioTreat 工艺联控</div><nav><a href="/process">工艺总控</a><a href="/aeration">曝气调节</a><a href="/sludge">污泥回流</a><a aria-current="page" href="/manifests">外运联单</a><a href="/alarms">异常处置</a></nav></header>
+<main><div class="page-head"><div><h1>污泥外运联单</h1><div class="muted">排泥任务建单、流量确认、资源释放后结单，失败任务关联补偿</div></div><div class="status"><span class="dot"></span><span id="health">checking</span></div></div>
+<div class="grid">
+<section class="panel"><h2>新建排泥任务</h2><form id="create">
+<label>处理线<select name="line_id"><option>line-1</option><option>line-2</option><option>line-3</option></select></label>
+<label>沉淀池<input name="basin_id" value="SD1" required></label>
+<label>泵序列（逗号分隔）<input name="pump_ids" value="pump-line-1-A" required></label>
+<label>估计体积 (m³)<input name="estimated_volume" type="number" step="0.01" min="0.01" value="12.5" required></label>
+<label>接收方<input name="receiver" value="城东污泥处置中心" required></label>
+<label>运输车辆（选填）<input name="vehicle" value="苏A·12345"></label>
+<label>排泥互锁请求 ID（选填，结单前须已释放）<input name="interlock_id" placeholder="排泥申请返回的 request id"></label>
+<label>交接时间<input name="handover_at" type="datetime-local" step="1" required></label>
+<button>建立联单</button>
+</form></section>
+<section class="panel wide"><h2>联单查询</h2><form id="filter" style="grid-template-columns:1fr 1fr auto;display:grid;">
+<label>处理线<select name="line_id"><option value="">全部</option><option>line-1</option><option>line-2</option><option>line-3</option></select></label>
+<label>状态<select name="status"><option value="">全部</option><option value="open">待结单</option><option value="completed">已结单</option><option value="failed">已失败</option></select></label>
+<button style="align-self:end;">查询</button>
+</form>
+<table style="margin-top:12px;"><thead><tr><th>联单号</th><th>处理线</th><th>沉淀池</th><th>泵序列</th><th>体积(m³)</th><th>接收方</th><th>交接时间</th><th>状态</th><th>操作</th></tr></thead><tbody id="manifests"></tbody></table>
+</section>
+<section class="panel wide no-print"><h2>操作结果</h2><pre id="output">等待操作</pre></section>
+<section class="panel wide" style="grid-column:1/-1;"><h2 class="no-print">联单打印</h2><div id="ticket" class="ticket"></div></section>
+</div></main>
+<script src="/assets/common.js"></script><script>
+const STATUS_TEXT = {open:'待结单', completed:'已结单', failed:'已失败'};
+function handoverDefault(){const d=new Date();d.setMinutes(d.getMinutes()-d.getTimezoneOffset());document.querySelector('[name=handover_at]').value=d.toISOString().slice(0,19);}
+handoverDefault();
+async function load(){
+  const f=new FormData(document.querySelector('#filter'));
+  const params=new URLSearchParams();
+  if(f.get('line_id'))params.set('line_id',f.get('line_id'));
+  if(f.get('status'))params.set('status',f.get('status'));
+  const d=await request('/api/manifests?'+params.toString());
+  document.querySelector('#manifests').innerHTML=d.manifests.map(m=>{
+    const actions=m.status==='open'
+      ? `<button onclick="flowPrompt('${m.id}','${m.pump_ids.join(',')}')">流量确认</button>
+         <button onclick="complete('${m.id}')">结单</button>
+         <button class="danger" onclick="fail('${m.id}')">失败</button>`
+      : '';
+    return `<tr><td>${m.number}</td><td>${m.line_id}</td><td>${m.basin_id}</td><td>${m.pump_ids.join(', ')}</td>
+    <td>${m.estimated_volume}</td><td>${m.receiver}</td><td>${m.handover_at.replace('T',' ').replace('Z',' UTC')}</td>
+    <td><span class="badge ${m.status}">${STATUS_TEXT[m.status]}</span>${m.status==='failed'?'<br><small>'+m.fail_reason+'</small>':''}</td>
+    <td class="row-actions">${actions}<a href="/api/manifests/${m.id}/print" target="_blank">打印</a></td></tr>`;
+  }).join('');
+}
+document.querySelector('#create').addEventListener('submit',async e=>{
+  e.preventDefault();const f=new FormData(e.target);
+  const raw=f.get('handover_at');
+  const handoverAt=new Date(raw).toISOString();
+  try{
+    const m=await request('/api/manifests',{method:'POST',body:JSON.stringify({
+      line_id:f.get('line_id'), basin_id:f.get('basin_id'), pump_ids:f.get('pump_ids').split(',').map(s=>s.trim()).filter(Boolean),
+      estimated_volume:Number(f.get('estimated_volume')), receiver:f.get('receiver'), vehicle:f.get('vehicle'),
+      interlock_id:f.get('interlock_id'), handover_at:handoverAt,
+    })});
+    show(m);await load();
+  }catch(err){showError(err);}
+});
+document.querySelector('#filter').addEventListener('submit',e=>{e.preventDefault();load().catch(showError);});
+async function flowPrompt(id,pumps){
+  const pump=prompt('确认泵 ID（'+pumps+'）:',pumps.split(',')[0]);if(!pump)return;
+  const flow=Number(prompt('确认流量 m³/h:','0'));if(!flow)return;
+  try{show(await request(`/api/manifests/${id}/flow`,{method:'POST',body:JSON.stringify({pump_id:pump,flow})}));await load();}catch(err){showError(err);}
+}
+async function complete(id){
+  if(!confirm('确认排泥资源已释放且全部泵流量已确认，结单？'))return;
+  try{show(await request(`/api/manifests/${id}/complete`,{method:'POST'}));await load();}catch(err){showError(err);}
+}
+async function fail(id){
+  const reason=prompt('失败原因：');if(!reason)return;
+  try{show(await request(`/api/manifests/${id}/fail`,{method:'POST',body:JSON.stringify({reason})}));await load();}catch(err){showError(err);}
+}
+load().catch(showError);
+</script></body></html>
